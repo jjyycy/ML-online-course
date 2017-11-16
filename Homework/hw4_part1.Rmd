@@ -1,0 +1,122 @@
+---
+title: '46-926 Homework #3, Part I'
+author: "Jingyi Guo, Pittsburgh Campus"
+date: "2/3/2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+I choose to analyze the excess return of PNC.
+
+# Get Data
+
+```{r data, results='hide',warning=FALSE,message=FALSE}
+library(quantmod)
+source("http://www.stat.cmu.edu/~cschafer/MSCF/getFamaFrench.txt")
+ffhold=getFamaFrench(from="2012-1-1",to="2012-6-30")
+PNC = getSymbols("PNC", from="2012-1-1", to="2012-6-30", auto.assign=F)
+ffhold$PNCexret = 100*dailyReturn(PNC) - ffhold$RF
+yielddata = read.table(
+  "http://www.stat.cmu.edu/~cschafer/MSCF/YieldCurves2012.txt", header=T)
+yielddata$Date = as.Date(as.character(yielddata$Date), format="%m/%d/%y")
+keep = yielddata$Date <= "2012-6-30" & yielddata$Date >= "2012-1-1" &
+  yielddata$Date != "2012-4-6"
+yielddatasub = yielddata[keep,]
+yieldcurves=yielddatasub[,2:12]
+```
+
+# Models
+
+## Model 1
+
+```{r model 1}
+fitmodel1=lm(PNCexret ~ Mkt.RF, data=ffhold)
+```
+
+## Model 2
+
+```{r model 2}
+fitmodel2=lm(PNCexret ~ Mkt.RF + SMB + HML, data=ffhold)
+```
+
+## Model 3
+```{r model 3}
+pcaout=princomp(yieldcurves)
+PCA1=pcaout$scores[,1]
+PCA2=pcaout$scores[,2]
+PCA3=pcaout$scores[,3]
+fitmodel3=lm(PNCexret ~ Mkt.RF + SMB + HML + PCA1 + PCA2 + PCA3, data=ffhold)
+```
+
+## Model 4
+```{r model 4}
+fitmodel4=lm(PNCexret ~ Mkt.RF + SMB + HML +pcaout$scores[,1:6], data=ffhold)
+```
+
+# 1. Summary
+```{r summary}
+summary(fitmodel1)
+summary(fitmodel2)
+summary(fitmodel3)
+summary(fitmodel4)
+```
+
+# 2. AIC
+```{r AIC}
+AIC(fitmodel1)
+AIC(fitmodel2)
+AIC(fitmodel3)
+AIC(fitmodel4)
+```
+
+Since the AIC of the third model is the smallest, we conclude that Model 3 is the best choice using AIC criterion.
+
+# 3. Diagonistic Plot
+```{r plot}
+par(mfrow=c(2,2))
+# plot of residuals vs. fitted values
+plot(as.numeric(fitmodel3$fit),as.numeric(fitmodel3$resid),pch=16,xlab="Fitted Values",
+     ylab="Residuals",main="Plot of Residuals vs. Fitted Values")
+# normal prob. plot
+qqnorm(as.numeric(fitmodel3$resid),pch=16,main="Normal Probability Plot")
+qqline(as.numeric(fitmodel3$resid))
+# plot of residuals vs. time
+plot(fitmodel3$resid, xlab="Time",ylab="Residuals",pch=16,main="Plot of Residuals vs. Time")
+# Plot of Cook Distance
+plot(fitmodel3, which=4)
+cookd = as.numeric(cooks.distance(fitmodel3))
+sort(pf(cookd,7,118),decreasing=TRUE)[1:5]
+```
+
+Comment: 
+
+There is no prevalent pattern in the plot of residuals vs. fitted values, so Model 3 seems to be an acceptable fit. The normal distribution plot suggests that errors have distribution with tails significantly higher than normal distribution. The plot of residuals versus time does not reveal significant concern. In the Cook's Distance plot, two observations might be considered influential. The largest Cook's Distance is at the 1.6% of the F distribution. So there is not need for concern from influential dots.
+
+# 4. Prediction
+```{r predict}
+# obtain data
+ffhold1=getFamaFrench(from="2012-7-1",to="2012-7-31")
+keep1 = yielddata$Date <= "2012-7-31" & yielddata$Date >= "2012-7-1"
+yielddatasub1 = yielddata[keep1,]
+yieldcurves1=yielddatasub1[,2:12]
+newcoords = predict(pcaout, yieldcurves1)
+# prediction
+result=predict.lm(fitmodel2,newdata=data.frame(ffhold1,PCA1=newcoords[,1],PCA2=newcoords[,2],
+                                               PCA3=newcoords[,3]),interval="prediction")
+print(result)
+PNC1 = getSymbols("PNC", from="2012-7-1", to="2012-7-31", auto.assign=F)
+ffhold1$PNCexret = 100*dailyReturn(PNC1) - ffhold1$RF
+# count correct prediction intervals
+count=0
+for (i in 1:21)
+{
+  if (ffhold1$PNCexret[i]>=result[i,2] && ffhold1$PNCexret[i]<=result[i,3])
+    count=count+1
+}
+print(count/21)
+```
+
+Therefore 90.4% of the intervals include the true values.
