@@ -1,0 +1,106 @@
+---
+title: "46-926 Homework 2, Part I"
+author: "Jingyi Guo, Pittsburgh Campus"
+date: "1/28/2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE,warning=FALSE}
+library(leaps)
+library(bestglm)
+library(MASS)
+library(car)
+bonddata = read.table("http://www.stat.cmu.edu/~cschafer/MSCF/bonddata.txt",sep=",",header=T)
+newdata=subset(bonddata[3:16])
+trade_price=newdata$trade_price
+weight=newdata$weight
+current_coupon=newdata$current_coupon
+time_to_maturiy=newdata$time_to_maturiy
+is_callable=newdata$is_callable
+reporting_delay=newdata$reporting_delay
+trade_size=newdata$trade_size
+trade_type=newdata$trade_type
+curved_based_price=newdata$curve_based_price
+received_time_diff_last1=newdata$received_time_diff_last1
+trade_price_last1=newdata$trade_price_last1
+trade_size_last1=newdata$trade_size_last1
+trade_type_last1=newdata$trade_type_last1
+curved_based_price_last1=newdata$curve_based_price_last1
+```
+
+## 1 Exhaustive Search
+
+```{r 1}
+allpreds=cbind(weight,current_coupon,time_to_maturiy,is_callable,reporting_delay,trade_size,trade_type,
+               curved_based_price,received_time_diff_last1,trade_price_last1,trade_size_last1,
+               trade_type_last1,curved_based_price_last1)
+Xyframe=data.frame(cbind(allpreds,trade_price))
+bestmod=bestglm(Xyframe,IC="AIC")
+print(bestmod)
+```
+
+We see that the final model takes the form
+
+\[Y_i=\beta_0+\beta_1trade\_size+\beta_2trade\_type+\beta_3curved\_based\_price+\beta_4received\_time\_diff\_last1+\beta_5trade\_price\_last1\]
+\[\ +\beta_6trade\_type\_type\_last1+\beta_7curved\_based\_price\_last1\]
+
+Categorical predictors trade_type, trade_type_last1 appear in the final model.
+
+## 2 PRESS
+
+First, compute the PRESS for the full model
+
+```{r 2 full PRESS}
+fitfullmodel = lm(trade_price ~ ., data = newdata)
+levs=hatvalues(fitfullmodel)
+PRESSfull=sum((fitfullmodel$resid/(1-levs))^2)
+print(PRESSfull)
+```
+
+Then, compute the PRESS for the final model in Question 1
+
+```{r 2 Q1 PRESS}
+fitmodel1 = lm(trade_price ~ trade_type+curved_based_price+curved_based_price+received_time_diff_last1
+               +trade_price_last1+trade_type_last1+curved_based_price_last1, data = newdata)
+levs1=hatvalues(fitmodel1)
+PRESS1=sum((fitmodel1$resid/(1-levs1))^2)
+print(PRESS1)
+```
+
+The PRESS value for the full model is larger than that for the AIC-optimal value found in Question 1. So according to PRESS, the model in Question 1 has higher predictive power than the full model.
+
+
+## 3 Influential Observations
+
+```{r 3}
+cookd=as.numeric(cooks.distance(fitmodel1))
+sort(pf(cookd,8,1612),decreasing=TRUE)[1:5]
+```
+
+The largest Cook's Distance is at the 3.0% of the F distribution. So there is no reason for concern from influcential observations.
+
+## 4 Robust Regression Method
+
+```{r 4}
+holdrlm1 = rlm(trade_price ~ trade_type+curved_based_price+curved_based_price+received_time_diff_last1
+               +trade_price_last1+trade_type_last1+curved_based_price_last1, data = newdata)
+summary(holdrlm1)
+```
+
+## 5 Box-Cox Procedure
+
+```{r 5}
+boxcox(trade_price ~ .,data = newdata)
+```
+
+From the plot, 1 is very close to being in the 95% Confidence Interval of lambda. So we could approximate lambda to be 1, which means a transformation of response is not necessary.
+
+However, to be more precise, we see that the optimal choice is \[\lambda\approx1.1.\] And this can be applied to the data as follows
+```{r 5 transformation}
+transrealizedvol=bcPower(trade_price,1.1)
+```
+

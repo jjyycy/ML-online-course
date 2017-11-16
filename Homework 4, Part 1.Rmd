@@ -1,0 +1,50 @@
+---
+title: "46-926 Homework 4, Part I"
+author: "Jingyi Guo, Pittsburgh Campus"
+date: "2/11/2017"
+output: pdf_document
+---
+
+```{r data preparation,warning=FALSE,results='hide',message=FALSE}
+library(quantmod)
+load("/Users/apple/retmat.Robj")
+stockdata = getSymbols("MSFT", auto.assign=FALSE, from="2016-1-1", to="2016-12-31")
+msft = dailyReturn(stockdata[,6])
+msft = as.numeric(msft)
+library(glmnet)
+```
+
+## 1 Lasso Procedure
+
+```{r 1}
+retmat = as.matrix(retmat)
+glmnetout = glmnet(retmat, msft)
+print(glmnetout)
+```
+
+## 2 Five-Fold Cross Validation
+
+```{r 2}
+cvglmout = cv.glmnet(retmat, msft)
+plot(cvglmout)
+```
+
+## 3 Lambda Selection
+
+```{r 3}
+optlambda=cvglmout$lambda.1se
+print(optlambda)
+```
+
+I would use \[\lambda=0.03716655\] in this case.
+
+## 4 Selected ETF
+
+```{r 4}
+optlambdapos=which(cvglmout$glmnet.fit$lambda==optlambda)
+glmnetout$beta[glmnetout$beta[,optlambdapos]!=0,optlambdapos]
+```
+
+Therefore ITY, TECS, XLK are included in the final model.
+
+
