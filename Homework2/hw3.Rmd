@@ -1,0 +1,403 @@
+---
+title: "Homework 3"
+author: "Jingyi Guo(jingyig1), Pittsburgh Campus"
+date: "11/20/2017"
+output: pdf_document
+---
+
+```{r setup,results="hide"}
+rm(list=ls())
+setwd("/Users/apple/Desktop/ML2/Homework3")
+library(e1071)
+library(MASS)
+library(randomForest)
+library(pROC)
+library(xgboost)
+library(Matrix)
+```
+
+## 1.
+
+# (a)
+
+```{r 1a}
+set.seed(0)
+get_circle_data = function(n){
+  X = matrix(rnorm(2*n),ncol=2)
+  Y = as.numeric(X[,1]^2+X[,2]^2<1)
+  data.frame(x1=X[,1],x2=X[,2],y=as.factor(ifelse(Y==1,1,-1)))
+}
+train = get_circle_data(100)
+test = get_circle_data(1000)
+plot(train$x1,train$x2,pch=as.numeric(train$y) + 15,col=train$y, main="Training data")
+
+plot(test$x1,test$x2, pch=as.numeric(test$y) + 15, col=test$y, main="Testing data")
+```
+
+# (b)
+
+```{r 1b}
+linearsvmfit=svm(y~.,data=train,kernel='linear',cost=1e7)
+plot(linearsvmfit, train)
+```
+
+Linear SVM does a poor job fitting, the straight line decision boundary doesn't capture the actual boundary.
+
+```{r 1b1}
+sum(predict(linearsvmfit, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.503.
+
+# (c)
+
+```{r 1c}
+polysvmfit=svm(y~.,data=train,kernel='polynomial',cost=1e7)
+plot(polysvmfit, train)
+```
+
+Polynomial kernal works even worse. The decision boundary doesn't capture the actual boundary.
+
+```{r 1c1}
+sum(predict(polysvmfit, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.568, even bigger.
+
+# (d)
+```{r 1d}
+polysvmfit2=svm(y~.,data=train,kernel='polynomial',cost=1000, degree = 2)
+plot(polysvmfit2, train)
+```
+
+Setting degree=2 makes the fitting much better. The decision boundary is close to the circle.
+
+```{r 1d1}
+sum(predict(polysvmfit2, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.015, much smaller.
+
+# (e)
+
+```{r warning=FALSE}
+tune.poly = tune(svm, y~., data=train, kernel='polynomial', degree=2, ranges=list(cost=c(1000, 1e4, 1e5, 1e6, 1e7, 1e8), gamma=c(0.001, 0.005, 0.01, 0.05, .1, 1)))
+plot(tune.poly$best.model, train)
+print(tune.poly$best.parameters)
+```
+
+The parameters for the best model: cost=1e+07, gamma=1.
+
+```{r 1e1}
+sum(predict(tune.poly$best.model, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.014.
+
+# (f)
+
+```{r 1f}
+radsvmfit=svm(y~.,data=train,kernel='radial',cost=1000)
+plot(radsvmfit, train)
+```
+
+Radial kernal works pretty well. The decision boundary is close to the circle.
+
+```{r 1f1}
+sum(predict(radsvmfit, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.009.
+
+# (g)
+```{r 1g}
+tune.rad = tune(svm, y~., data=train, kernel='radial', ranges=list(cost=c(.1,1,10,100,1000, 1e4, 1e5, 1e6), gamma=c(0.01, 0.05, .1, .5,1,2,3)))
+plot(tune.rad$best.model, train)
+print(tune.rad$best.parameters)
+```
+
+The parameters for the best model: cost=1e+06, gamma=0.01.
+
+```{r 1g1}
+sum(predict(tune.rad$best.model, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.009.
+
+# (h)
+
+```{r 1h}
+train = get_circle_data(500)
+tune.poly = tune(svm, y~., data=train, kernel='polynomial', degree=2,
+                ranges=list(cost=c(1000, 1e4, 1e5, 1e6, 1e7, 1e8),
+                            gamma=c(0.001, 0.005, 0.01, 0.05, .1, 1)))
+plot(tune.poly$best.model, train)
+print(tune.poly$best.parameters)
+```
+
+The parameters for the best model: cost=1e+05, gamma=0.001.
+
+```{r 1h1}
+sum(predict(tune.poly$best.model, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.044.
+
+```{r 1h2}
+tune.rad = tune(svm, y~., data=train, kernel='radial',
+                ranges=list(cost=c(.1,1,10,100,1000, 1e4, 1e5, 1e6),
+                            gamma=c(0.01, 0.05, .1, .5,1,2,3)))
+plot(tune.rad$best.model, train)
+print(tune.rad$best.parameters)
+```
+
+The parameters for the best model: cost=1e+04, gamma=0.5.
+
+```{r 1h3}
+sum(predict(tune.rad$best.model, test) != test$y)/nrow(test)
+```
+
+The misclassification error is 0.008.
+
+I would pick the SVM classifier with radial kernel because it has the lowest test set misclassification error. Misclassification error for radial SVM is 0.6%, for AdaBoost is 1.6%, for polynomial SVM is 3.1%. According to the comparison of classification error, AdaBoost is better than polynomial SVM but worse than radial SVM.
+
+
+## 2.
+
+```{r 2}
+getdata = function(n,p){
+  rho = .3
+  Sig1 = diag(p)
+  Sig2 = matrix(rho,p,p)
+  diag(Sig2)=2
+  mu1 = matrix(rep(0,p))
+  mu2 = matrix(rep(1,p))
+  X1 = mvrnorm(n/2,mu1,Sig1)
+  X2 = mvrnorm(n/2,mu2,Sig2)
+  y1 = rep(1,n/2)
+  y2 = rep(2,n/2)
+  X = rbind(X1,X2)
+  y = as.factor(c(y1,y2))
+  list(X=X,y=y)
+}
+```
+
+# (a)
+
+```{r 2a}
+n = 100
+p = 20
+set.seed(1)
+train = getdata(n,p)
+test = getdata(n,p)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00")
+plot(train$X[,1],train$X[,2], col=cbPalette[train$y], pch=16,
+     main="Training data", xlab = 'x1', ylab = 'x2')
+legend("topleft", legend=c("y=1", "y=2"), pch=c(16,16),col=cbPalette[c(1,2)],cex=0.8)
+```
+
+# (b)
+
+```{r 2b}
+lda_fit = lda(train$X, train$y)
+qda_fit = qda(train$X, train$y)
+mean(predict(lda_fit)$class != train$y)
+```
+
+Training error for LDA is 0.08.
+
+```{r 2b1}
+mean(predict(qda_fit)$class != train$y)
+```
+
+Training error for QDA is 0.
+
+QDA method has smaller training error than LDA because the data are generated based on different variables. LDA made incorrect assumptions, while QDA satisfied assumptions.
+
+# (c)
+
+```{r 2c}
+mean(predict(lda_fit, newdata = test$X)$class != test$y)
+```
+
+Test error for LDA is 0.19.
+
+```{r 2c1}
+mean(predict(qda_fit, newdata = test$X)$class != test$y)
+```
+
+Test error for QDA is 0.38.
+
+Here LDA has smaller test set error.
+
+# (d)
+
+Compared with LDA, QDA has more parameters to estimate, so it's more likely to perform poorly out-of-sample when covariance matrices estimated from training set are not close to the true values.
+
+## 3. 
+
+See last page
+
+
+## 4.
+
+```{r  warning=FALSE}
+marketing = read.csv('marketing.csv')
+set.seed(1)
+idx.test = sample(1:nrow(marketing),floor(0.2*nrow(marketing)))
+test = marketing[idx.test,]
+train_full = marketing[-idx.test,]
+#Split off another piece of our training set as a validation set.  We will use this for tuning
+idx.valid = sample(1:nrow(train_full),floor(0.25*nrow(train_full)))
+valid = train_full[idx.valid,]
+train = train_full[-idx.valid,]
+
+#Fit logistic regression
+fitlm = glm(y~.,data = train_full, family='binomial')
+guess_lm = predict(fitlm,newdata=test, type='response')
+
+#Fit a balanced random forest
+library(randomForest)
+nsmall = sum(train$y=='yes')
+forest_bal = randomForest(train_full[,1:8], train_full[,9], strata=train_full$y, sampsize=c(nsmall,nsmall))
+guess_bal = predict(forest_bal, test[,1:8], type='prob')[,2]
+
+#Draw roc curves
+roc(test[,9], guess_lm, col='blue', plot = TRUE, add=FALSE)
+roc(test[,9], guess_bal, col='green', plot = TRUE, add=TRUE)
+
+
+library(xgboost)
+#Reformat the data for xgboost
+train_expanded = sparse.model.matrix(y ~ .-1, data = train)
+valid_expanded = sparse.model.matrix(y ~ .-1, data = valid)
+test_expanded = sparse.model.matrix(y ~ .-1, data = test)
+train_y = (train$y == 'yes')
+valid_y = (valid$y == 'yes')
+test_y = (test$y == 'yes')
+dtrain = xgb.DMatrix(data=train_expanded, label=train_y)
+dvalid = xgb.DMatrix(data=valid_expanded, label=valid_y)
+dtest = xgb.DMatrix(data=test_expanded, label=test_y)
+```
+
+# (a)
+
+```{r 4a}
+boost_simple = xgb.train(list(objective='binary:logistic'), dtrain, nround=10, verbose=2)
+guess_simpleboost = predict(boost_simple, dtest)
+mean((guess_simpleboost > 0.5) != test_y)
+```
+
+Misclassification error (threshold=0.5) for simple boosted tree is 0.1196638.
+
+```{r 4a1}
+mean((guess_bal > 0.5) != test_y)
+```
+
+Misclassification error (threshold=0.5) for balanced random forest is 0.2817961.
+
+```{r 4a2}
+ROC = roc(test_y, guess_lm, col='blue', plot = TRUE, add=FALSE)
+ROC = roc(test_y, guess_bal, col='green', plot = TRUE, add=TRUE)
+ROC = roc(test_y, guess_simpleboost, col = 'orange', plot = T, add=T)
+legend("bottomright", legend=c("logistic", "bal.random forest", "simple boost"), pch=c(16,16),col=c('blue','green','orange'), cex=0.8)
+```
+
+
+When we set threshold to be 0.5, the ROC curve of balanced random forest is highest, indicating that the random forest has better ROC.
+
+# (b)
+
+```{r 4b}
+nround=c(50, 100, 300)
+max_depth=c(10, 20)
+eta=c(0.05, 0.1, 0.3)
+subsample=c(0.5, 0.8)
+scale_pos_weight=c(0.2, 0.5)
+param_matrix = data.frame(as.matrix(expand.grid(nround, max_depth, eta,subsample, scale_pos_weight)))
+param_names = c('nround', 'max_depth','eta', 'subsample','scale_pos_weight')
+colnames(param_matrix)= param_names
+tune_boost = function(param_matrix, dtrain, eval_metric = 'auc', quiet=F){
+    objectives = vector('numeric', length = 0)
+    for (i in 1:nrow(param_matrix)){
+    param = param_matrix[i, ]
+    paramlist = list(objective='binary:logistic', eval_metric=eval_metric,
+                   max_depth=param$max_depth, eta=param$eta,
+                   scale_pos_weight=param$scale_pos_weight,
+                   subsample=param$subsample)
+    watchlist = list(train=dtrain, validation=dvalid)
+    out = xgb.train(paramlist, dtrain, nround=param$nround, verbose=0,
+                    watchlist=watchlist, callbacks = list(cb.evaluation.log()))
+    objectives[i] =  as.numeric(out$evaluation_log[out$niter, 3])
+    if (!quiet){
+        cat('param:', as.numeric(param),
+      '  validation error:', objectives[i], '\n')
+    }}
+    if (eval_metric=='auc'){
+      best_param = param_matrix[which.max(objectives),]
+      best_obj = max(objectives)
+    }
+    else{
+      best_param = param_matrix[which.min(objectives),]
+      best_obj = min(objectives)
+    }
+    return(list("best_param" = best_param, "best_obj"=best_obj,
+                'params'=param_matrix, 'objs'=objectives))
+}
+out_error = tune_boost(param_matrix, dtrain, eval_metric = 'error')
+out_auc = tune_boost(param_matrix, dtrain, eval_metric = 'auc')
+```
+
+Best paramaters for each eval_metric:
+
+```{r 4b1}
+best_params = data.frame(rbind(out_error$best_param,out_auc$best_param),row.names = c('error', 'auc'))
+colnames(best_params) = param_names
+print(best_params)
+print(out_error$best_obj)
+print(out_auc$best_ob)
+```
+
+Best misclassification rate in validation set is 0.114134, best AUC in validation set is 0.707551.
+
+# (c)
+
+```{r 4c}
+fit_boost = function(param, eval_metric, dtrain){
+  paramlist = list(objective='binary:logistic', eval_metric=eval_metric,
+                 max_depth=param$max_depth, eta=param$eta,
+                 scale_pos_weight=param$scale_pos_weight,
+                 subsample=param$subsample)
+  out = xgb.train(paramlist, dtrain, nround=param$nround, verbose=0)
+}
+boost_error = fit_boost(best_params['error', ], eval_metric = 'error', dtrain = dtrain)
+boost_auc = fit_boost(best_params['auc', ], eval_metric = 'auc', dtrain = dtrain)
+guess_boost_error = predict(boost_error, dtest)
+guess_boost_auc = predict(boost_auc, dtest)
+```
+
+```{r 4c1}
+cat("misclassification error (threshold=0.5) for bal. random forest:",
+    mean((guess_bal > 0.5) != test_y))
+cat("misclassification error (threshold=0.5) for error-tuned boosted tree:",mean((guess_boost_error > 0.5) != test_y))
+cat("misclassification error (threshold=0.5) for auc-tuned boosted tree:",mean((guess_boost_auc > 0.5) != test_y))
+ROC = roc(test_y, guess_bal, col='green', plot = TRUE, add=F)
+cat('auc for random forest: ', ROC$auc, '\n')
+ROC = roc(test_y, guess_boost_error, col='blue', plot = TRUE, add=T)
+cat('auc for error boosted tree: ', ROC$auc, '\n')
+ROC = roc(test_y, guess_boost_auc, col = 'orange', plot = TRUE, add=T)
+cat('auc for auc booste tree: ', ROC$auc, '\n')
+legend("bottomright", legend=c("bal.random forest", "error boosted tree", "auc boosted tree"),pch=c(16,16,16),col=c('green','blue','orange'), cex=0.8)
+```
+
+The tuned boosted tree based on error has the lowest misclassification rate while the tuned boosted tree based on auc has the highest AUC in the test set.Compared with random forest model, both of the boosted trees performs better in terms of their eval_metric, but neither of them can beat random forest for both AUC and error.
+
+```{r 4c2}
+xgb.plot.importance(xgb.importance(colnames(test_expanded), boost_error),main = 'eval_metric = error')
+xgb.plot.importance(xgb.importance(colnames(test_expanded), boost_auc), main = 'eval_metric = auc')
+```
+
+
+
+
+

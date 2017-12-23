@@ -1,0 +1,300 @@
+---
+title: "Homework 5"
+author: "Jingyi Guo (jingyig1), Pittsburgh Campus"
+date: "12/5/2017"
+output: pdf_document
+---
+
+```{r setup, message=FALSE}
+setwd("~/Desktop/ML2/Homework 5")
+load('djia_data.RData') 
+load('djia_info.RData') 
+source('djia_helpers.R')
+library("protoclust")
+```
+
+## 1
+
+### (a)
+
+```{r 1a}
+palette = colorRampPalette(c('skyblue','orange'))(30)
+djia_close_log = log(djia_close[-1,1:30]/djia_close[-nrow(djia_close),1:30]) 
+plot(djia_close$date[-1], djia_close_log[,1], type="l", ylim=c(min(djia_close_log), max(djia_close_log)), xlab="Time", ylab="Log Return", col=palette[1])
+for (i in 2:30) {
+  lines(djia_close$date[-1], djia_close_log[,i], col=palette[i]) 
+}
+legend("bottomright", legend=colnames(djia_close)[-1], lwd=2, col=palette, cex=0.4)
+```
+
+### (b)
+
+```{r 1b}
+hold_dist = dist(t(as.matrix(djia_close_log))) 
+hold_clust1 = hclust(hold_dist, method="complete") 
+plot(hold_clust1)
+```
+
+According to the dendrogram above, grouping the stocks into 3 clusters is reasonable, where the majority of stocks are divided into 2 large subgroups with height=0.3, and NKE being very different from other clusters.
+
+### (c)
+```{r 1c}
+k=3
+hold_cut1 = cutree(hold_clust1, k=k)
+hold_group1 = resolve_groups(hold_cut1, djia_info) 
+for (i in 1:k) {
+  print(paste("Group", i)) 
+  print(hold_group1$industry[[i]]) 
+  print(hold_group1$symbol[[i]])
+}
+```
+
+The stocks in group 1 are more related to service industry and consumer's daily needs such as Fast Food and Pharmaceuticals. The stocks in group 2 are more related to manufactoring industry, such as Oil & gas and Aerospace and defense. Group 3 only consists of the stock NKE.
+
+### (d)
+
+```{r 1d}
+hold_clust2 = hclust(hold_dist, method="single") 
+plot(hold_clust2)
+```
+
+The clustering look worse than in (b) because there's no clear division of subgroups in the dendrogram.
+
+### (e)
+
+```{r 1e}
+k=4
+hold_dist_corr = as.dist(1-cor(djia_close_log)) 
+hold_clust3 = hclust(hold_dist_corr, method="complete") 
+plot(hold_clust3)
+hold_cut3 = cutree(hold_clust3, k=k)
+hold_group3 = resolve_groups(hold_cut3, djia_info) 
+for (i in 1:k) {
+  print(paste("Group", i)) 
+  print(hold_group3$industry[[i]]) 
+  print(hold_group3$symbol[[i]])
+}
+```
+
+This result looks better. The 3 groups are well separated at height=0.7, although NKE is still in a single group. In this division, group 1 and group 2 are more related to the service industry while group 3 is more related to manufacturing industry.
+
+### (f)
+```{r 1f}
+hold_dist_corr2 = as.dist(1-cor(djia_close_log, method='spearman'))
+hold_clust4 = hclust(hold_dist_corr2, method="complete") 
+plot(hold_clust4)
+hold_cut4 = cutree(hold_clust4, k=k)
+hold_group4 = resolve_groups(hold_cut4, djia_info) 
+for (i in 1:k) {
+  print(paste("Group", i)) 
+  print(hold_group4$industry[[i]]) 
+  print(hold_group4$symbol[[i]])
+}
+```
+
+This result looks even better. NKE is no longer in a single group. Each group are well separated and the size difference is more moderate. This might because the Spearman correlation is invariant to monotonic transformation and thus is more robust to outliers. Therefore NKE is not separated in a single group.
+
+
+## 2
+
+```{r 2}
+rm(list=ls())
+load("hw5hierdata.Rdata")
+```
+
+### (a)
+
+```{r 2a}
+plot(hdata, pch=20)
+hold_clust5 = hclust(dist(hdata), method="average") 
+plot(hold_clust5)
+```
+
+### (b)
+
+Big group 1 consists of the 4 subgroups on the left.
+Big group 2 consists of the 3 subgroups on the right.
+
+### (c)
+
+```{r 2c}
+for (k in c(2,4,7)) {
+  hold_cut5 = cutree(hold_clust5, k=k)
+  tmp_palette = colorRampPalette(c('skyblue','orange'))(k)
+  tmp_colors = tmp_palette[hold_cut5]
+  par(mfrow=c(1,2))
+  plot(hdata, pch=20, col=tmp_colors)
+  legend("bottomright", legend=paste("Group", 1:k), pch=20, col=tmp_palette, cex=0.75)
+  plot(hold_clust5) 
+  abline(h=mean(rev(hold_clust5$height)[(k-1):k]))
+}
+```
+
+Hierarchial clustering correctly idendifies all the groups and subgroups. The result agrees with the labeling in (b).
+
+### (d)
+
+```{r 2d}
+hold_clust6 = hclust(dist(hdata), method="single") 
+plot(hold_clust6)
+for (k in c(2,7)) {
+  hold_cut6 = cutree(hold_clust6, k=k)
+  tmp_palette = colorRampPalette(c('skyblue','orange'))(k)
+  tmp_colors = tmp_palette[hold_cut6]
+  plot(hdata, pch=20, col=tmp_colors)
+  legend("bottomright", legend=paste("Group", 1:k), pch=20, col=tmp_palette, cex=0.75) 
+}
+```
+
+The clustering is not as clear as the previous one. We cannot easily separate big groups and subgroups from the dendrogram.
+
+After cutting the dendrogram with the same number of clusters, the result is still not as clear as the previous one. The new clustering looks bad. This might because single linkage suffers from chaining. If a pair of points are close enough to each other, the two subgroups may merge into a big group, irrespective of the rest. The clusters formed under single linkage could be quite spread out.
+
+
+## 3
+
+```{r 3}
+rm(list=ls()) 
+load("hw5single.Rdata")
+```
+
+### (a)
+
+```{r 3a}
+palette = colorRampPalette(c('skyblue','orange'))(2)
+colors = palette[pieces]
+plot(points, pch=20, col=colors)
+legend("topright", legend=c("Group 1", "Group2"), pch=20, col=palette)
+```
+
+The cluster structure is very clear.
+
+### (b)
+
+```{r 3bb}
+hold_kmeans = kmeans(points, centers=2)
+colors2 = palette[hold_kmeans$cluster]
+plot(points, pch=20, col=colors2)
+legend("topright", legend=c("Group 1", "Group 2"), pch=20, col=palette)
+```
+
+K-means with 2 clusters works poorly here. It simply assigns the points on the left to one group and points on the right to another. This is a typical case of chaining: the two groups are quite spread out, with some pairs being very close to each other. The K-means method tries to assgin each point to the closest center, thus assigning outlier points to another group.
+
+### (c)
+
+```{r 3c}
+hold_clust7 = hclust(dist(points), method="complete") 
+hold_cut7 = cutree(hold_clust7, k=2)
+hold_clust8 = hclust(dist(points), method="average") 
+hold_cut8 = cutree(hold_clust8, k=2) 
+par(mfrow=c(2,2))
+plot(points, pch=20, col=palette[hold_cut7])
+legend("topright", legend=c("Group 1", "Group 2"), pch=20, col=palette, cex=0.6) 
+plot(hold_clust7)
+abline(h=mean(rev(hold_clust7$height)[1:2]))
+plot(points, pch=20, col=palette[hold_cut8])
+legend("topright", legend=c("Group 1", "Group 2"), pch=20, col=palette, cex=0.6) 
+plot(hold_clust8)
+abline(h=mean(rev(hold_clust8$height)[1:2]))
+```
+
+The result is similar to the K-means method. Thw 2 groups are not correctly separated. This is because the complete linkage focuses on the distance of furthest pairs and average linkage considers all pairs, and the resulting clusters tend to be compact and not reflecting the true shapes of the 2 groups.
+
+### (d)
+
+```{r 3d}
+hold_clust9 = hclust(dist(points), method="single")
+hold_cut9 = cutree(hold_clust9, k=2)
+par(mfrow=c(1,2))
+plot(points, pch=20, col=palette[hold_cut9])
+legend("topright", legend=c("Group 1", "Group 2"), pch=20, col=palette, cex=0.75) 
+plot(hold_clust9)
+abline(h=mean(rev(hold_clust9$height)[1:2]))
+```
+
+The single linkage works well, correctly identifying all points. This is because of the chaining of data. Single linkage only conisder the shortest distance pairs, so the groups can be quite spread out, as in this case.
+
+
+## 4
+
+```{r 4}
+load("zip.014.Rdata") 
+load("tangent_distances.RData") 
+source("plot.digit.R") 
+```
+
+### (a)
+
+```{r 4a}
+hold_clust10 = hclust(dist(x.014.tr), method="complete") 
+plot(hold_clust10)
+table(cutree(hold_clust10,k=3), y.014.tr)
+table(cutree(hold_clust10,k=6), y.014.tr)
+```
+
+
+Complete linkage works poorly, and that with 6 groups works slightly better. But either of them candistinguish 1 from 4 well, and groups 3~6 cannot differentiate.
+
+### (b)
+
+```{r 3b}
+hold_clust11 = hclust(dist(x.014.tr), method="average") 
+plot(hold_clust11)
+table(cutree(hold_clust11,k=3), y.014.tr)
+table(cutree(hold_clust11,k=6), y.014.tr)
+```
+
+Average linkage with 6 groups does a better job separating 0 from the other two, but still cannot differentiate 1 from 4.
+
+### (c)
+
+```{r 4c}
+hold_clust12 = hclust(tangentDist, method="complete")
+plot(hold_clust12)
+table(cutree(hold_clust12,k=3), y.014.tr)
+table(cutree(hold_clust12,k=6), y.014.tr)
+```
+
+Complete linkage with 6 groups is much better. It can differentiare 1 and 4 in most cases.
+
+### (d)
+
+```{r 4d}
+hold_clust13 = protoclust(tangentDist)
+plot(hold_clust13)
+table(cutree(hold_clust13,k=3), y.014.tr)
+table(cutree(hold_clust13,k=6), y.014.tr)
+```
+
+This have very similar results as in (c). The clustering with 6 groups is much better than using 3 groups. And it can further separate 1 from 4 compared with other methods.
+
+### (e)
+
+```{r 4e}
+hold_cut12 = cutree(hold_clust12, k=6) 
+hold_cut13 = protocut(hold_clust13, k=6)
+par(mfrow=c(2,3))
+for (i in 1:6) {
+  plot.digit(colMeans(x.014.tr[hold_cut12==i,])) 
+}
+par(mfrow=c(2,3)) 
+for (i in 1:6) {
+  plot.digit(x.014.tr[hold_cut13$protos[i],]) 
+}
+```
+
+The seond group of plots is easier to understand. Each plot is an actual image from the original dataset rather than a blurred average of images.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
